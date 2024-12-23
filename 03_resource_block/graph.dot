@@ -1,0 +1,11 @@
+digraph G {
+    rankdir = "RL";
+    node [shape = rect; fontname = "sans-serif";];
+    "aws_instance.web" [label = "aws_instance.web";];
+    "local_file.abc" [label = "local_file.abc";];
+    "local_file.def" [label = "local_file.def";];
+    "local_file.ghi" [label = "local_file.ghi";];
+    "local_file.jkl" [label = "local_file.jkl";];
+    "local_file.ghi" -> "local_file.abc";
+    "local_file.jkl" -> "local_file.ghi";
+}
