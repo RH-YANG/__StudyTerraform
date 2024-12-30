@@ -19,7 +19,7 @@ resource "aws_instance" "example" {
   connection {
     type        = "ssh"
     user        = "root"
-    private_key = self.password
+    private_key = var.password
     host        = self.public_ip
   }
 
@@ -36,4 +36,9 @@ resource "aws_instance" "example" {
 
 
   }
+}
+
+
+variable "password" {
+  default = ""
 }
