@@ -11,8 +11,7 @@ env:
   TF_VERSION: 1.8.5
 
 jobs:
-  Scan_JOB:
-    name: Scan_JOB #테라폼 코드 검증
+  Scan_JOB:  #테라폼 코드 검증
     runs-on: ubuntu-latest
     # env:
     #   working-directory: terraform
@@ -44,7 +43,6 @@ jobs:
 
   Terraform_JOB:
     needs: Scan_JOB # 순차실행(의존성 주입)
-    name: Terraform
     runs-on: ubuntu-latest
 
     steps:
