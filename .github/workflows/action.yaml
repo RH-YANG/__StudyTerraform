@@ -1,0 +1,116 @@
+name: Terraform DEV
+
+on: 
+  push:
+    branches:
+      - main
+  pull_request:
+
+env:
+  MY_PREFIX: DEV
+  TF_VERSION: 1.8.5
+
+jobs:
+  Scan_JOB:
+    name: Scan_JOB #테라폼 코드 검증
+    runs-on: ubuntu-latest
+    # env:
+    #   working-directory: terraform
+    #   TF_WORKSPACE: my-workspace
+    steps:
+      # - name: Configure AWS credentials
+      #   uses: aws-actions/configure-aws-credentials@v1
+      #   with:
+      #     aws-region: eu-west-1
+
+      - name: Check out code #검증을 위해 저장소의 코드를 체크아웃
+        uses: actions/checkout@v3
+        
+      - name: Run Terrascan #테라폼의 코드 검증 도구 실행
+        id: terrascan
+        uses: tenable/terrascan-action@main
+        with:
+          iac_type: 'terraform'
+          iac_version: 'v14'
+          policy_type: 'aws'
+          only_warn: true
+          sarif_upload: true
+
+      - name: Upload SARIF file #검증의 결과 업로드
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: terrascan.sarif  
+
+
+  Terraform_JOB:
+    needs: Scan_JOB # 순차실행(의존성 주입)
+    name: Terraform
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code # 검증을 위해 저장소의 코드를 체크아웃
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials # AWS 환경을 프로비저닝하기 위한 증명설정
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: $TF_VERSION
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Terraform Fmt # 표준 스타일 수정 대상 확인
+        id: fmt
+        run: terraform fmt -recursive -check
+        continue-on-error: true
+
+      - name: Terraform init # 테라폼 초기화 진행
+        id: init
+        run: terraform init -upgrade
+        # working-directory: ${{ env.working-directory }}
+
+      - name: Terraform validate # 코드 문법 오류 검사
+        id: validate
+        run: terraform validate -no-color
+
+      - name: Terraform plan # 테라폼 실행 계획 확인
+        id: plan
+        run: terraform plan -no-color -var=prefix="$MY_PREFIX"
+        # working-directory: ${{ env.working-directory }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          TF_LOG: info
+
+      - name: Plan output # 발동 기전이 PullRequest인 경우 실행 계획을 정리해 출력
+        id: output
+        uses: actions/github-script@v3
+        if: github.event_name == 'pull_request'
+        env:
+          PLAN: "terraform\n${{ steps.plan.outputs.stdout }}"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
+            #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+            #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+            <details><summary>Show Plan</summary>
+            \`\`\`hcl
+            ${process.env.PLAN}
+            \`\`\`
+            </details>
+            **Pusher**: @${{ github.actor }}
+            **Action**: ${{ github.event_name }}
+            `;
+            github.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+
+      - name: Terraform apply # 메인 브랜치 변경시에만 테라폼 apply 수행
+        id: apply
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform apply -auto-approve -var=prefix="$MY_PREFIX" -input=false
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
